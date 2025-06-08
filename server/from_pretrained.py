@@ -55,7 +55,6 @@ def load_pretrained_block(
         block = get_model_block(config, layer_idx=block_index)
 
     block_prefix = f"{config.block_prefix}.{block_index}."
-    logger.info(f"Loading path {cache_dir}")
     state_dict = _load_state_dict_from_repo(
         model_name,
         block_prefix,

@@ -252,13 +252,8 @@ async def iterate_rpc_inference(
 
         # Logging the timing breakdown
         logger.info(
-            f"[ServerTiming] request_received={request_received_time:.6f}, "
-            f"computation_start={computation_start_time:.6f}, "
-            f"computation_end={computation_end_time:.6f}, "
-            f"response_ready={response_ready_time:.6f}, "
-            f"pre_compute={computation_start_time - request_received_time:.4f}s, "
+            f"[ServerTiming] request_uid={request.request_id}, "
             f"compute_time={computation_end_time - computation_start_time:.4f}s, "
-            f"post_compute={response_ready_time - computation_end_time:.4f}s"
         )
 
         can_push = not has_prompts

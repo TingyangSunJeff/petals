@@ -97,27 +97,26 @@ class _ServerInferenceSession:
           if specified, deep prompts should have shape [num_layers, batch_size, prefix_len, hid_size]
         """
         start_ss_step = time.time()
-        logger.info("===> [Timer] Calling _ServerInferenceSession.step()")
         if self.closed:
             raise Exception("Session is closed, cannot perform step")
 
         n_input_tokens = inputs.shape[1]
 
-        # if self.history is None:
-        #     self.history = inputs
-        # elif self.history.shape[1] == self._position:
-        #     self.history = torch.cat([self.history, inputs[:, -n_input_tokens:]], dim=1)
+        if self.history is None:
+            self.history = inputs
+        elif self.history.shape[1] == self._position:
+            self.history = torch.cat([self.history, inputs[:, -n_input_tokens:]], dim=1)
 
 
-        # assert self.history.shape[1] == self._position + n_input_tokens, (
-        #     f"Broken input cache: span={self.span} shape={self.history.shape} "
-        #     f"position={self._position} n_input_tokens={n_input_tokens}"
-        # )
+        assert self.history.shape[1] == self._position + n_input_tokens, (
+            f"Broken input cache: span={self.span} shape={self.history.shape} "
+            f"position={self._position} n_input_tokens={n_input_tokens}"
+        )
 
-        # if not self.stepped:
-        #     inputs = self.history  # Pass full inputs including prefix
-        # else:
-        #     inputs = inputs[:, -n_input_tokens:]  # No need to pass prefix further
+        if not self.stepped:
+            inputs = self.history  # Pass full inputs including prefix
+        else:
+            inputs = inputs[:, -n_input_tokens:]  # No need to pass prefix further
 
         # serialize inputs and put them into the queue
         input_tensors, args_structure = pack_args_kwargs(inputs, prompts, hypo_ids)
@@ -234,6 +233,7 @@ class InferenceSession:
         self.output_ids = None
         self.past_key_values = None
         self.timer = defaultdict(list)
+        self.timer_ttft = []
         self.timer_sum = []
         self.count = 0
         self.routing_path = routing_path
@@ -347,7 +347,9 @@ class InferenceSession:
                     self.timer_sum.append(esapsed_time)
                     if self.count >= 1:
                         self.timer[server_session.span.peer_id].append(esapsed_time)
-                    logger.info("server_session.span.peer_id:{}, time:{} seconds".format(server_session.span.peer_id, esapsed_time))
+                    else:
+                        self.timer_ttft.append(esapsed_time)
+                    logger.info("{}th request {}th token server_session.span.peer_id:{}, time:{} seconds".format(self.request_id, self.count, server_session.span.peer_id, esapsed_time))
                     # Log waiting time if there were retries
                     if wait_start_time is not None:
                         wait_time = start_time - wait_start_time
@@ -369,8 +371,8 @@ class InferenceSession:
                     )
                     maybe_log_traceback(e)
                     time.sleep(delay)
-        one_token_total_time = time.time() - whole_start_time
-        logger.info(f"Time for {self.request_id}th request {self.count}th inference: {one_token_total_time} seconds")
+        # one_token_total_time = time.time() - whole_start_time
+        # logger.info(f"Time for {self.request_id}th request {self.count}th inference: {one_token_total_time} seconds")
         self._position += n_input_tokens
         outputs = inputs[:, -n_input_tokens:]
         outputs = outputs.to(device=inputs_device, dtype=inputs_dtype)
@@ -380,6 +382,7 @@ class InferenceSession:
             total_time_one_token += np.mean(k)
         logger.info(f"Time per token: {total_time_one_token}")
         logger.info(f"{self.request_id}th request {self.count}th inference sum time: {sum(self.timer_sum)}")
+        logger.info(f"{self.request_id}th request first inference average time: {sum(self.timer_ttft)}")
         self.count += 1
         return outputs
 
